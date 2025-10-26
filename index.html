@@ -57,8 +57,13 @@
         textarea.form-control { min-height: 100px; resize: vertical; }
         .btn { padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px; display: inline-flex; align-items: center; gap: 8px; }
         .btn-primary { background-image: linear-gradient(45deg, var(--primary-color), #8A52F8); color: white; }
-        .video-item { display: flex; flex-direction: row; align-items: center; padding: 18px 15px; border-bottom: 1px solid var(--border-color); background: #FDFDFD; border-radius: 8px; margin-bottom: 10px; }
+        .btn-danger { background-image: linear-gradient(45deg, var(--danger-color), #FF7B87); color: white; }
+        .video-item { display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 18px 15px; border-bottom: 1px solid var(--border-color); background: #FDFDFD; border-radius: 8px; margin-bottom: 10px; }
         .video-item p { margin: 0; font-weight: 500; font-size: 16px; color: var(--text-dark); flex-grow: 1; }
+        .modal { display: none; position: fixed; z-index: 1002; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); padding-top: 60px;}
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 30px; border: 1px solid #888; width: 90%; max-width: 600px; border-radius: 12px; box-shadow: var(--shadow); position: relative; }
+        .close-btn { color: #aaa; position: absolute; top: 10px; right: 20px; font-size: 28px; font-weight: bold; }
+        .close-btn:hover, .close-btn:focus { color: black; text-decoration: none; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -123,7 +128,8 @@
                     <div class="form-group"><label for="category-select">ক্যাটাগরি</label><select id="category-select" class="form-control"></select></div>
                     <input type="text" id="new-category-name" placeholder="নতুন ক্যাটাগরি যোগ করুন" class="form-control" style="margin-top: 10px;">
                     <div style="margin-top:15px; display: flex; gap: 10px;">
-                        <button id="add-category-btn" class="btn btn-primary"><i class="fas fa-plus"></i> যোগ</button>
+                        <button id="add-category-btn" class="btn btn-primary"><i class="fas fa-plus"></i> যোগ করুন</button>
+                        <button id="delete-category-btn" class="btn btn-danger"><i class="fas fa-trash"></i> ডিলিট করুন</button>
                     </div>
                     <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border-color);">
                     <h3>নতুন ভিডিও যোগ করুন</h3>
@@ -136,6 +142,29 @@
                     <div id="video-list">লোড হচ্ছে...</div>
                 </section>
             </main>
+        </div>
+    </div>
+
+    <!-- Edit Video Modal -->
+    <div id="edit-video-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" id="close-modal-btn">&times;</span>
+            <h2><i class="fas fa-edit"></i> ভিডিও এডিট করুন</h2>
+            <input type="hidden" id="edit-video-key">
+            <input type="hidden" id="edit-video-category">
+            <div class="form-group">
+                <label for="edit-video-title">ভিডিও টাইটেল</label>
+                <input type="text" id="edit-video-title" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="edit-image-link">ইমেজ লিংক</label>
+                <input type="text" id="edit-image-link" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="edit-video-link">ভিডিও লিংক</label>
+                <input type="text" id="edit-video-link" class="form-control">
+            </div>
+            <button id="save-video-changes-btn" class="btn btn-primary"><i class="fas fa-save"></i> সেভ করুন</button>
         </div>
     </div>
 
@@ -249,6 +278,21 @@
                     });
                 });
 
+                // --- NEW: Delete Category Button Logic ---
+                document.getElementById('delete-category-btn').addEventListener('click', () => {
+                    checkAuthAndRun(() => {
+                        const selectedCategory = document.getElementById('category-select').value;
+                        if (selectedCategory && confirm(`আপনি কি '${selectedCategory}' ক্যাটাগরিটি ডিলিট করতে চান? এর সাথে যুক্ত সকল ভিডিও ডিলিট হয়ে যাবে।`)) {
+                            db.ref('videos/' + selectedCategory).remove()
+                            .then(() => alert('ক্যাটাগরি সফলভাবে ডিলিট হয়েছে!'))
+                            .catch(err => alert('একটি সমস্যা হয়েছে: ' + err.message));
+                        } else if (!selectedCategory) {
+                            alert('অনুগ্রহ করে একটি ক্যাটাগরি নির্বাচন করুন।');
+                        }
+                    });
+                });
+
+
                 document.getElementById('add-video-btn').addEventListener('click', () => {
                     checkAuthAndRun(() => {
                         const cat = document.getElementById('category-select').value;
@@ -307,18 +351,71 @@
                         }
                         videoEntries.forEach(([key, video]) => {
                             const el = document.createElement('div'); el.className = 'video-item';
+                            // --- MODIFIED: Added Edit button ---
                             el.innerHTML = `<p>${video.title}</p>
-                            <button onclick="deleteVideo('${key}', '${cat}')" style="background:none; border:none; cursor:pointer; font-size: 16px; color: #FF4B5C;"><i class="fas fa-trash"></i></button>`;
+                            <div>
+                               <button onclick="openEditModal('${key}', '${cat}')" style="background:none; border:none; cursor:pointer; font-size: 16px; color: var(--primary-color); margin-right: 10px;"><i class="fas fa-edit"></i></button>
+                               <button onclick="deleteVideo('${key}', '${cat}')" style="background:none; border:none; cursor:pointer; font-size: 16px; color: var(--danger-color);"><i class="fas fa-trash"></i></button>
+                            </div>`;
                             videoListDiv.appendChild(el);
                         });
                     });
                 }
+
+                // --- NEW: Edit Modal Logic ---
+                const modal = document.getElementById('edit-video-modal');
+                const closeModalBtn = document.getElementById('close-modal-btn');
+                const saveVideoBtn = document.getElementById('save-video-changes-btn');
+
+                closeModalBtn.onclick = () => { modal.style.display = 'none'; }
+                window.onclick = (event) => { if (event.target == modal) { modal.style.display = 'none'; } }
+
+                saveVideoBtn.addEventListener('click', () => {
+                    checkAuthAndRun(() => {
+                        const key = document.getElementById('edit-video-key').value;
+                        const cat = document.getElementById('edit-video-category').value;
+                        const updatedVideo = {
+                            title: document.getElementById('edit-video-title').value.trim(),
+                            img: document.getElementById('edit-image-link').value.trim(),
+                            link: document.getElementById('edit-video-link').value.trim()
+                        };
+
+                        if (!updatedVideo.title || !updatedVideo.img || !updatedVideo.link) {
+                            alert('সব তথ্য পূরণ করুন।');
+                            return;
+                        }
+
+                        db.ref(`videos/${cat}/${key}`).update(updatedVideo)
+                        .then(() => {
+                            alert('ভিডিও সফলভাবে আপডেট হয়েছে!');
+                            modal.style.display = 'none';
+                        })
+                        .catch(err => alert('একটি সমস্যা হয়েছে: ' + err.message));
+                    });
+                });
             }
 
             window.deleteVideo = (key, cat) => {
                 if(auth.currentUser && confirm('ভিডিওটি ডিলিট করতে চান?')) {
                     db.ref(`videos/${cat}/${key}`).remove();
                 }
+            }
+            
+            // --- NEW: Function to open and populate the edit modal ---
+            window.openEditModal = (key, cat) => {
+                if (!auth.currentUser) return;
+                const modal = document.getElementById('edit-video-modal');
+                db.ref(`videos/${cat}/${key}`).once('value').then(snapshot => {
+                    const video = snapshot.val();
+                    if (video) {
+                        document.getElementById('edit-video-key').value = key;
+                        document.getElementById('edit-video-category').value = cat;
+                        document.getElementById('edit-video-title').value = video.title;
+                        document.getElementById('edit-image-link').value = video.img;
+                        document.getElementById('edit-video-link').value = video.link;
+                        modal.style.display = 'block';
+                    }
+                });
             }
         });
     </script>
