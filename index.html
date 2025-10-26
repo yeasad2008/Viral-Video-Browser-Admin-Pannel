@@ -58,6 +58,7 @@
         .btn { padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px; display: inline-flex; align-items: center; gap: 8px; }
         .btn-primary { background-image: linear-gradient(45deg, var(--primary-color), #8A52F8); color: white; }
         .btn-danger { background-image: linear-gradient(45deg, var(--danger-color), #FF7B87); color: white; }
+        .btn-secondary { background-image: linear-gradient(45deg, var(--secondary-color), #868e9d); color: white; }
         .video-item { display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 18px 15px; border-bottom: 1px solid var(--border-color); background: #FDFDFD; border-radius: 8px; margin-bottom: 10px; }
         .video-item p { margin: 0; font-weight: 500; font-size: 16px; color: var(--text-dark); flex-grow: 1; }
         .modal { display: none; position: fixed; z-index: 1002; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); padding-top: 60px;}
@@ -127,8 +128,9 @@
                     <h2><i class="fas fa-video"></i> ভিডিও ম্যানেজমেন্ট</h2>
                     <div class="form-group"><label for="category-select">ক্যাটাগরি</label><select id="category-select" class="form-control"></select></div>
                     <input type="text" id="new-category-name" placeholder="নতুন ক্যাটাগরি যোগ করুন" class="form-control" style="margin-top: 10px;">
-                    <div style="margin-top:15px; display: flex; gap: 10px;">
+                    <div style="margin-top:15px; display: flex; gap: 10px; flex-wrap: wrap;">
                         <button id="add-category-btn" class="btn btn-primary"><i class="fas fa-plus"></i> যোগ করুন</button>
+                        <button id="edit-category-btn" class="btn btn-secondary"><i class="fas fa-edit"></i> এডিট করুন</button>
                         <button id="delete-category-btn" class="btn btn-danger"><i class="fas fa-trash"></i> ডিলিট করুন</button>
                     </div>
                     <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border-color);">
@@ -278,7 +280,6 @@
                     });
                 });
 
-                // --- NEW: Delete Category Button Logic ---
                 document.getElementById('delete-category-btn').addEventListener('click', () => {
                     checkAuthAndRun(() => {
                         const selectedCategory = document.getElementById('category-select').value;
@@ -288,6 +289,33 @@
                             .catch(err => alert('একটি সমস্যা হয়েছে: ' + err.message));
                         } else if (!selectedCategory) {
                             alert('অনুগ্রহ করে একটি ক্যাটাগরি নির্বাচন করুন।');
+                        }
+                    });
+                });
+
+                // --- NEW: Edit Category Button Logic ---
+                document.getElementById('edit-category-btn').addEventListener('click', () => {
+                    checkAuthAndRun(() => {
+                        const oldCategoryName = document.getElementById('category-select').value;
+                        if (!oldCategoryName) {
+                            alert('এডিট করার জন্য অনুগ্রহ করে একটি ক্যাটাগরি নির্বাচন করুন।');
+                            return;
+                        }
+                        const newCategoryName = prompt(`'${oldCategoryName}' এর জন্য নতুন নাম দিন:`, oldCategoryName);
+                        if (newCategoryName && newCategoryName.trim() !== '' && newCategoryName.trim() !== oldCategoryName) {
+                            const trimmedNewName = newCategoryName.trim();
+                            const oldRef = db.ref('videos/' + oldCategoryName);
+                            const newRef = db.ref('videos/' + trimmedNewName);
+                            oldRef.once('value', snapshot => {
+                                const categoryData = snapshot.val();
+                                if (categoryData) {
+                                    newRef.set(categoryData).then(() => {
+                                        oldRef.remove().then(() => {
+                                            alert(`ক্যাটাগরি '${oldCategoryName}' সফলভাবে '${trimmedNewName}' এ পরিবর্তন হয়েছে!`);
+                                        }).catch(err => alert('পুরানো ক্যাটাগরি ডিলিট করতে সমস্যা হয়েছে: ' + err.message));
+                                    }).catch(err => alert('নতুন ক্যাটাগরি তৈরি করতে সমস্যা হয়েছে: ' + err.message));
+                                }
+                            }).catch(err => alert('ক্যাটাগরির তথ্য আনতে সমস্যা হয়েছে: ' + err.message));
                         }
                     });
                 });
@@ -318,10 +346,12 @@
                 const categorySelect = document.getElementById('category-select');
                 const videoListDiv = document.getElementById('video-list');
                 const currentCategorySpan = document.getElementById('current-category-name');
+                
+                let lastSelectedCategory = null;
 
                 db.ref('videos').on('value', s => {
                     const cats = s.val() ? Object.keys(s.val()) : []; 
-                    const sel = categorySelect.value;
+                    const sel = categorySelect.value || lastSelectedCategory;
                     categorySelect.innerHTML = '';
                     cats.forEach(c => { 
                         const o = document.createElement('option'); o.value = c; o.textContent = c; 
@@ -335,6 +365,7 @@
                 categorySelect.addEventListener('change', (e) => loadVideosForCategory(e.target.value));
 
                 function loadVideosForCategory(cat) {
+                    lastSelectedCategory = cat;
                     if (!cat) {
                         videoListDiv.innerHTML = '<p>ক্যাটাগরি নির্বাচন করুন।</p>';
                         currentCategorySpan.textContent = "N/A";
@@ -349,9 +380,9 @@
                              videoListDiv.innerHTML = '<p>এই ক্যাটাগরিতে কোনো ভিডিও নেই।</p>';
                              return;
                         }
+                        videoEntries.sort((a, b) => new Date(b[1].uploadTime) - new Date(a[1].uploadTime)); // Sort by newest first
                         videoEntries.forEach(([key, video]) => {
                             const el = document.createElement('div'); el.className = 'video-item';
-                            // --- MODIFIED: Added Edit button ---
                             el.innerHTML = `<p>${video.title}</p>
                             <div>
                                <button onclick="openEditModal('${key}', '${cat}')" style="background:none; border:none; cursor:pointer; font-size: 16px; color: var(--primary-color); margin-right: 10px;"><i class="fas fa-edit"></i></button>
@@ -362,7 +393,6 @@
                     });
                 }
 
-                // --- NEW: Edit Modal Logic ---
                 const modal = document.getElementById('edit-video-modal');
                 const closeModalBtn = document.getElementById('close-modal-btn');
                 const saveVideoBtn = document.getElementById('save-video-changes-btn');
@@ -401,7 +431,6 @@
                 }
             }
             
-            // --- NEW: Function to open and populate the edit modal ---
             window.openEditModal = (key, cat) => {
                 if (!auth.currentUser) return;
                 const modal = document.getElementById('edit-video-modal');
